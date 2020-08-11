@@ -1,0 +1,4 @@
+jsonpickle
+discord >= "^1.0.1"
+flask
+python-dotenv
