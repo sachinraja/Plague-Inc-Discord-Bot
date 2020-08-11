@@ -115,10 +115,20 @@ async def on_message(message):
 
     # Create new game
     if message.content.startswith('p$newgame'):
+        map_name = message.content[10:]
 
-        player_map = 0
-        with open('Maps/map1.json', 'r') as f:
-            player_map = jsonpickle.decode(f.read())
+        if map_name == '':
+            await message.channel.send('Enter a valid map name after p$newgame. Ex: p$newgame map1.')
+            return
+
+        try:
+            player_map = 0
+            with open('Maps/' + map_name.lower() + '.json', 'r') as f:
+                player_map = jsonpickle.decode(f.read())
+        
+        except:
+            await message.channel.send(f'{map_name} is not a valid map name.')
+            return
 
         player_game = Game(player_map)
         player_game.save(str(message.author.id))
@@ -155,7 +165,7 @@ async def on_message(message):
             
             if len(valid_placements) == 0:
                 if continent == '':
-                    await message.channel.send(f'Enter a valid continent after p$place. Ex: p$place North America.')
+                    await message.channel.send('Enter a valid continent after p$place. Ex: p$place North America.')
                     return
 
                 await message.channel.send(f'{continent} is not a valid continent.')
