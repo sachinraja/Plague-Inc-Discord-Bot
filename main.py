@@ -63,10 +63,6 @@ class Map():
             image_binary.seek(0)
             im_map = discord.File(fp=image_binary, filename='image.png')
             return im_map
-
-    def save_map(self, user_id):
-        with open('Player_Maps/' + user_id + '.json', 'w') as f:
-            f.write(jsonpickle.encode(self))
     
     def get_population(self):
         population = 0
@@ -90,20 +86,24 @@ class Map():
 
         return embed_map
 
-def load_map(user_id):
-    try:
-        with open('Player_Maps/' + user_id + '.json', 'r') as f:
-            player_map = jsonpickle.decode(f.read())
-            return player_map
-    
-    except:
-        return 0
-
 class Game():
 
     def __init__(self, map):
-        pass
+        self.map = map
 
+    def save(self, user_id):
+        with open('Player_Games/' + user_id + '.json', 'w') as f:
+            f.write(jsonpickle.encode(self))
+
+def load_game(user_id):
+    try:
+        with open('Player_Games/' + user_id + '.json', 'r') as f:
+            player_game = jsonpickle.decode(f.read())
+            return player_game
+    
+    except:
+        return 0
+            
 @client.event
 async def on_ready():
     print('Logged in as {0.user}'.format(client))
@@ -120,14 +120,15 @@ async def on_message(message):
         with open('Maps/map1.json', 'r') as f:
             player_map = jsonpickle.decode(f.read())
 
-        await message.channel.send(file=player_map.map_to_image(), embed=player_map.get_embed(message.author.name))
+        player_game = Game(player_map)
+        player_game.save(str(message.author.id))
 
-        player_map.save_map(str(message.author.id))
+        await message.channel.send(file=player_map.map_to_image(), embed=player_map.get_embed(message.author.name))
         
     
     elif message.content.startswith('p$'):
-
-        player_map = load_map(str(message.author.id))
+        player_game = load_game(str(message.author.id))
+        player_map = player_game.map
 
         if (player_map == 0):
             await message.channel.send('No game found! Create a game with p$newgame.')
@@ -167,7 +168,7 @@ async def on_message(message):
 
             await message.channel.send(file=player_map.map_to_image(), embed=player_map.get_embed(message.author.name))
 
-            player_map.save_map(str(message.author.id))
+            player_game.save(str(message.author.id))
 
         elif message.content.startswith('p$next'):
             
@@ -222,7 +223,7 @@ async def on_message(message):
 
             await message.channel.send(file=player_map.map_to_image(), embed=embed_map)
 
-            player_map.save_map(str(message.author.id))
+            player_game.save(str(message.author.id))
 
 keep_alive.keep_alive()
 
