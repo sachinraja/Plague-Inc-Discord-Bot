@@ -1,4 +1,5 @@
 import discord
+from discord.ext import commands
 import logging
 import jsonpickle
 from random import randrange, randint
@@ -19,7 +20,7 @@ handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w'
 handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 logger.addHandler(handler)
 
-client = discord.Client()
+bot = commands.Bot(command_prefix='p!')
 
 class Spot():
 
@@ -104,137 +105,159 @@ def load_game(user_id):
     except:
         return 0
             
-@client.event
+@bot.event
 async def on_ready():
-    print('Logged in as {0.user}'.format(client))
+    print(f'Logged in as {bot.user.name}')
 
-@client.event
-async def on_message(message):
-    if message.author == client.user:
+@bot.command(name='newgame', rest_is_raw=True)
+async def new_game(ctx, *, map_name):
+    '''
+    Create new game
+    '''
+    
+    if map_name == '':
+        await ctx.send('Enter a valid map name after p!newgame. Ex: p!newgame map1.')
         return
 
-    # Create new game
-    if message.content.startswith('p$newgame'):
-        map_name = message.content[10:]
-
-        if map_name == '':
-            await message.channel.send('Enter a valid map name after p$newgame. Ex: p$newgame map1.')
-            return
-
-        try:
-            player_map = 0
-            with open('Maps/' + map_name.lower() + '.json', 'r') as f:
-                player_map = jsonpickle.decode(f.read())
-        
-        except:
-            await message.channel.send(f'{map_name} is not a valid map name.')
-            return
-
-        player_game = Game(player_map)
-        player_game.save(str(message.author.id))
-
-        await message.channel.send(file=player_map.map_to_image(), embed=player_map.get_embed(message.author.name))
-        
+    map_name = map_name[1:]
+    print(map_name)
     
-    elif message.content.startswith('p$'):
-        player_game = load_game(str(message.author.id))
-        player_map = player_game.map
+    try:
+        player_map = 0
+        with open('Maps/' + map_name.lower() + '.json', 'r') as f:
+            player_map = jsonpickle.decode(f.read())
+    
+    except:
+        await ctx.send(f'{map_name} is not a valid map name.')
+        return
 
-        if (player_map == 0):
-            await message.channel.send('No game found! Create a game with p$newgame.')
+    player_game = Game(player_map)
+    player_game.save(str(ctx.author.id))
+
+    await ctx.send(file=player_map.map_to_image(), embed=player_map.get_embed(ctx.author.name))
+
+@bot.command(name='map')
+async def display_map(ctx):
+
+    player_game = load_game(str(ctx.author.id))
+
+    if (player_game == 0):
+        await ctx.send('No game found! Create a game with p!newgame.')
+        return
+
+    player_map = player_game.map
+
+    await ctx.send(file=player_map.map_to_image(), embed=player_map.get_embed(ctx.author.name))
+
+@bot.command(name='place', rest_is_raw=True)
+async def place_infested(ctx, *, continent):
+
+    player_game = load_game(str(ctx.author.id))
+
+    if (player_game == 0):
+        await ctx.send('No game found! Create a game with p!newgame.')
+        return
+
+    player_map = player_game.map
+
+    # check if an actual continent was entered
+    if continent == '':
+        await ctx.send('Enter a valid continent after p!place. Ex: p!place North America.')
+        return
+    
+    continent = continent[1:]
+
+    # check if player has already placed
+    for check_type_spot in player_map.spot_list:
+        if check_type_spot.spot_type == 'infected':
+            await ctx.send('You have already started your disease.')
             return
 
-        if message.content.startswith('p$map'):
-            await message.channel.send(file=player_map.map_to_image(), embed=player_map.get_embed(message.author.name))
+    # get continent they want to place on and place it randomly on a spot there
+    valid_placements = []
 
-        elif message.content.startswith('p$place'):
-            # check if player has already placed
-            for check_type_spot in player_map.spot_list:
-                if check_type_spot.spot_type == 'infected':
-                    await message.channel.send('You have already started your disease.')
-                    return
+    for check_continent_spot in player_map.spot_list:
+        if check_continent_spot.spot_type != 'water':
+            if continent.lower() == check_continent_spot.continent.lower():
+                valid_placements.append(check_continent_spot)
+    
+    # check if the continent has any tiles to infest
+    if len(valid_placements) == 0:
+        await ctx.send(f'{continent} is not a valid continent.')
+        return
 
-            # get continent they want to place on and place it randomly on a spot there
-            continent = message.content[8:]
-            valid_placements = []
+    # choose one spot out of the spots on the list
+    random_placement = randrange(0, len(valid_placements))
+    valid_placements[random_placement].spot_type = 'infected'
+    valid_placements[random_placement].color = (255, 0, 0)
 
-            for check_continent_spot in player_map.spot_list:
-                if check_continent_spot.spot_type != 'water':
-                    if continent.lower() == check_continent_spot.continent.lower():
-                        valid_placements.append(check_continent_spot)
+    await ctx.send(file=player_map.map_to_image(), embed=player_map.get_embed(ctx.author.name))
+
+    player_game.save(str(ctx.author.id))
+
+@bot.command(name='next')
+async def next_day(ctx):
+    player_game = load_game(str(ctx.author.id))
+
+    if (player_game == 0):
+        await ctx.send('No game found! Create a game with p!newgame.')
+        return
+
+    player_map = player_game.map
+
+    # save new infections as set and then iterate over it to change attributes
+    new_infections = set()
+    i = 0
+    for spot in player_map.spot_list:
+        if spot.spot_type == 'infected':
+            if randint(0, 3) == 0:
+                if player_map.spot_list[i - 1].spot_type == 'land':
+                    new_infections.add(player_map.spot_list[i - 1])
             
-            if len(valid_placements) == 0:
-                if continent == '':
-                    await message.channel.send('Enter a valid continent after p$place. Ex: p$place North America.')
-                    return
-
-                await message.channel.send(f'{continent} is not a valid continent.')
-                return
-
-            # choose one spot out of the spots on the list
-            random_placement = randrange(0, len(valid_placements))
-            valid_placements[random_placement].spot_type = 'infected'
-            valid_placements[random_placement].color = (255, 0, 0)
-
-            await message.channel.send(file=player_map.map_to_image(), embed=player_map.get_embed(message.author.name))
-
-            player_game.save(str(message.author.id))
-
-        elif message.content.startswith('p$next'):
-            
-            # save new infections as set and then iterate over it to change attributes
-            new_infections = set()
-            i = 0
-            for spot in player_map.spot_list:
-                if spot.spot_type == 'infected':
-                    if randint(0, 3) == 0:
-                        if player_map.spot_list[i - 1].spot_type == 'land':
-                            new_infections.add(player_map.spot_list[i - 1])
-                    
-                    try:
-                        if randint(0, 3) == 0:
-                            if player_map.spot_list[i + 1].spot_type == 'land':
-                                new_infections.add(player_map.spot_list[i + 1])
-                        
-                    except IndexError:
-                        index = i + 1
-                        index = (index - player_map.width) * -1
-                        if player_map.spot_list[index].spot_type == 'land':
-                            new_infections.add(player_map.spot_list[index])
-
-                    if randint(0, 3) == 0:
-                        if player_map.spot_list[i - player_map.width].spot_type == 'land':
-                            new_infections.add(player_map.spot_list[i - player_map.width])
-
-                    try:
-                        if randint(0, 3) == 0:
-                            if player_map.spot_list[i + player_map.width].spot_type == 'land':
-                                new_infections.add(player_map.spot_list[i + player_map.width])
-                    
-                    except IndexError:
-                        index = i * -1
-                        if player_map.spot_list[index].spot_type == 'land':
-                            new_infections.add(player_map.spot_list[index])
+            try:
+                if randint(0, 3) == 0:
+                    if player_map.spot_list[i + 1].spot_type == 'land':
+                        new_infections.add(player_map.spot_list[i + 1])
                 
-                i += 1
+            except IndexError:
+                index = i + 1
+                index = (index - player_map.width) * -1
+                if player_map.spot_list[index].spot_type == 'land':
+                    new_infections.add(player_map.spot_list[index])
 
-            for infection in new_infections:
-                    infection.spot_type = 'infected'
-                    infection.color = (255, 0, 0)
+            if randint(0, 3) == 0:
+                if player_map.spot_list[i - player_map.width].spot_type == 'land':
+                    new_infections.add(player_map.spot_list[i - player_map.width])
 
-            population = player_map.get_population()
+            try:
+                if randint(0, 3) == 0:
+                    if player_map.spot_list[i + player_map.width].spot_type == 'land':
+                        new_infections.add(player_map.spot_list[i + player_map.width])
+            
+            except IndexError:
+                index = i * -1
+                if player_map.spot_list[index].spot_type == 'land':
+                    new_infections.add(player_map.spot_list[index])
+        
+        i += 1
 
-            embed_map = discord.Embed(title='Map')\
-            .add_field(name='Population', value=str(population[0]), inline=False)\
-            .add_field(name='Infected Population', value=str(population[1]))\
-            .add_field(name='New Infections', value=len(new_infections))\
-            .set_image(url='attachment://image.png')\
-            .set_author(name=message.author.name)
+    for infection in new_infections:
+            infection.spot_type = 'infected'
+            infection.color = (255, 0, 0)
 
-            await message.channel.send(file=player_map.map_to_image(), embed=embed_map)
+    population = player_map.get_population()
 
-            player_game.save(str(message.author.id))
+    embed_map = discord.Embed(title='Map')\
+    .add_field(name='Population', value=str(population[0]), inline=False)\
+    .add_field(name='Infected Population', value=str(population[1]))\
+    .add_field(name='New Infections', value=len(new_infections))\
+    .set_image(url='attachment://image.png')\
+    .set_author(name=ctx.author.name)
+
+    await ctx.send(file=player_map.map_to_image(), embed=embed_map)
+
+    player_game.save(str(ctx.author.id))
 
 keep_alive.keep_alive()
 
-client.run(BOT_TOKEN)
+bot.run(BOT_TOKEN)
