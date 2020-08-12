@@ -90,10 +90,11 @@ class Map():
 
 class Upgrade():
     
-    def __init__(self, name, max_level, level, interval):
+    def __init__(self, name, max_level, level, base_cost, interval):
         self.name = name
         self.max_level = max_level
         self.level = level
+        self.base_cost = base_cost
         self.interval = interval
 
     def add_level(self):
@@ -161,12 +162,13 @@ async def new_game(ctx, *, map_name):
             player_map = jsonpickle.decode(f.read())
     
     except:
-        await ctx.send(f'{map_name} is not a valid map name.')
+        await ctx.send('Enter a valid map name after p!newgame. Ex: p!newgame map1.')
         return
 
-    upgrades = [Upgrade('infect speed', 3, 0, 1)]
+    upgrades = [Upgrade('air transmission', 3, 0, 9, 1), Upgrade('water transmission', 2, 0, 9, 1), Upgrade('livestock transmission', 3, 0, 7, 1),
+    Upgrade('pest transmission', 2, 0, 10, 1), Upgrade('blood transmission', 2, 0, 8, 1)]
 
-    player_game = Game(player_map, 10, upgrades, 0)
+    player_game = Game(player_map, 1000, upgrades, 0)
     player_game.save(str(ctx.author.id))
 
     await ctx.send(file=player_map.map_to_image(), embed=player_map.get_embed(ctx.author.name))
@@ -224,7 +226,7 @@ async def place_infected(ctx, *, continent):
     
     # check if the continent has any tiles to infect
     if len(valid_placements) == 0:
-        await ctx.send(f'{continent} is not a valid continent.')
+        await ctx.send('Enter a valid continent after p!place. Ex: p!place North America.')
         return
 
     # choose one spot out of the spots on the list
@@ -253,15 +255,17 @@ async def next_day(ctx):
     # save new infections as set and then iterate over it to change attributes
     new_infections = set()
     i = 0
-    infect_speed = player_game.upgrades[0].level
+    infect_chance = player_game.upgrades[0].level + player_game.upgrades[1].level + player_game.upgrades[2].level\
+        + player_game.upgrades[3].level + player_game.upgrades[4].level
+
     for spot in player_map.spot_list:
         if spot.spot_type == 'infected':
-            if randint(infect_speed, 8) == 8:
+            if randint(infect_chance, 15) == 15:
                 if player_map.spot_list[i - 1].spot_type == 'land':
                     new_infections.add(player_map.spot_list[i - 1])
             
             try:
-                if randint(infect_speed, 8) == 8:
+                if randint(infect_chance, 15) == 15:
                     if player_map.spot_list[i + 1].spot_type == 'land':
                         new_infections.add(player_map.spot_list[i + 1])
                 
@@ -271,12 +275,12 @@ async def next_day(ctx):
                 if player_map.spot_list[index].spot_type == 'land':
                     new_infections.add(player_map.spot_list[index])
 
-            if randint(infect_speed, 8) == 8:
+            if randint(infect_chance, 15) == 15:
                 if player_map.spot_list[i - player_map.width].spot_type == 'land':
                     new_infections.add(player_map.spot_list[i - player_map.width])
 
             try:
-                if randint(infect_speed, 8) == 8:
+                if randint(infect_chance, 15) == 15:
                     if player_map.spot_list[i + player_map.width].spot_type == 'land':
                         new_infections.add(player_map.spot_list[i + player_map.width])
             
@@ -330,18 +334,18 @@ async def upgrade(ctx, *, upgrade_arg):
             break
     
     if upgrade == 0:
-        await ctx.send(f'{upgrade_text} is not a valid upgrade.')
+        await ctx.send('Enter a valid upgrade after p!upgrade. Ex: p!upgrade Infect Speed.')
         return
 
     if upgrade.level < upgrade.max_level:
-        points_required = upgrade.level + 1
+        points_required = upgrade.base_cost + (upgrade.level * upgrade.interval)
 
         if player_game.points >= points_required:
             upgrade.level += 1
             player_game.points -= points_required
         
         else:
-            await ctx.send(f'You only have {str(player_game.points)} points, you need {str(points_required)} points to upgrade {upgrade_text}.')
+            await ctx.send(f'You only have {str(player_game.points)} point(s), you need {str(points_required)} points to upgrade {upgrade_text}.')
             return
     
     else:
@@ -364,10 +368,11 @@ async def upgrades_list(ctx):
         await ctx.send('No game found! Create a game with p!newgame.')
         return
 
-    embed_upgrades_list = discord.Embed(title='Upgrades', color=16711680)
+    embed_upgrades_list = discord.Embed(title='Upgrades', color=16711680)\
+    .add_field(name='Points', value=str(player_game.points))
     for upgrade in player_game.upgrades:
-        upgrade_message = f'Level {upgrade.level} / {upgrade.max_level}.\n'
-        embed_upgrades_list = embed_upgrades_list.add_field(name=upgrade.name, value = upgrade_message)
+        upgrade_message = f'Level {upgrade.level} / {upgrade.max_level}'
+        embed_upgrades_list = embed_upgrades_list.add_field(name=upgrade.name, value =upgrade_message, inline=False)
     
     await ctx.send(embed=embed_upgrades_list)
 
