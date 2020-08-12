@@ -21,6 +21,7 @@ handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(me
 logger.addHandler(handler)
 
 bot = commands.Bot(command_prefix='p!')
+bot.remove_command('help')
 
 class Spot():
 
@@ -79,7 +80,7 @@ class Map():
     def get_embed(self, author_name):
         population = self.get_population()
 
-        embed_map = discord.Embed(title='Map')\
+        embed_map = discord.Embed(title='Map', color=255)\
         .add_field(name='Population', value=str(population[0]), inline=False)\
         .add_field(name='Infected Population', value=str(population[1]), inline=False)\
         .set_image(url='attachment://image.png')\
@@ -87,10 +88,27 @@ class Map():
 
         return embed_map
 
+class Upgrade():
+    
+    def __init__(self, name, max_level, level, interval):
+        self.name = name
+        self.max_level = max_level
+        self.level = level
+        self.interval = interval
+
+    def add_level(self):
+        self.level += self.interval
+    
+    def __str__(self):
+        return f'{self.name} is level {self.level}.'
+
 class Game():
 
-    def __init__(self, map):
+    def __init__(self, map, points, upgrades, cure_percent):
         self.map = map
+        self.points = points
+        self.upgrades = upgrades
+        self.cure_percent = cure_percent
 
     def save(self, user_id):
         with open('Player_Games/' + user_id + '.json', 'w') as f:
@@ -109,6 +127,22 @@ def load_game(user_id):
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
 
+@bot.command(name='help')
+async def help_message(ctx):
+    '''
+    Shows the list of commands and what they do.
+    '''
+
+    embed_help_message = discord.Embed(title='Help', color=65280)\
+    .add_field(name="p!newgame [map_name]", value = "Starts a new game on map_name.", inline=False)\
+    .add_field(name="p!map", value = "Shows your current game's map.", inline=False)\
+    .add_field(name="p!place [continent]", value = "Begins the spread of the infection by placing an infected tile somewhere in continent.", inline=False)\
+    .add_field(name="p!next", value = "Goes to the next day, which spreads the infection and updates the cure percentage.", inline=False)\
+    .add_field(name="p!upgrade [upgrade]", value = "Upgrades upgrade to the next level.", inline=False)\
+    .add_field(name="p!upgrades", value = "Shows a list of your current game's upgrades and their levels.", inline=False)
+
+    await ctx.send(embed=embed_help_message)
+
 @bot.command(name='newgame', rest_is_raw=True)
 async def new_game(ctx, *, map_name):
     '''
@@ -120,7 +154,6 @@ async def new_game(ctx, *, map_name):
         return
 
     map_name = map_name[1:]
-    print(map_name)
     
     try:
         player_map = 0
@@ -131,13 +164,18 @@ async def new_game(ctx, *, map_name):
         await ctx.send(f'{map_name} is not a valid map name.')
         return
 
-    player_game = Game(player_map)
+    upgrades = [Upgrade('infect speed', 3, 0, 1)]
+
+    player_game = Game(player_map, 10, upgrades, 0)
     player_game.save(str(ctx.author.id))
 
     await ctx.send(file=player_map.map_to_image(), embed=player_map.get_embed(ctx.author.name))
 
 @bot.command(name='map')
 async def display_map(ctx):
+    '''
+    Displays the map of the game.
+    '''
 
     player_game = load_game(str(ctx.author.id))
 
@@ -150,7 +188,10 @@ async def display_map(ctx):
     await ctx.send(file=player_map.map_to_image(), embed=player_map.get_embed(ctx.author.name))
 
 @bot.command(name='place', rest_is_raw=True)
-async def place_infested(ctx, *, continent):
+async def place_infected(ctx, *, continent):
+    '''
+    Infects a random place on the continent chosen.
+    '''
 
     player_game = load_game(str(ctx.author.id))
 
@@ -181,7 +222,7 @@ async def place_infested(ctx, *, continent):
             if continent.lower() == check_continent_spot.continent.lower():
                 valid_placements.append(check_continent_spot)
     
-    # check if the continent has any tiles to infest
+    # check if the continent has any tiles to infect
     if len(valid_placements) == 0:
         await ctx.send(f'{continent} is not a valid continent.')
         return
@@ -197,6 +238,10 @@ async def place_infested(ctx, *, continent):
 
 @bot.command(name='next')
 async def next_day(ctx):
+    '''
+    Spreads infection, goes to "next day".
+    '''
+
     player_game = load_game(str(ctx.author.id))
 
     if (player_game == 0):
@@ -208,14 +253,15 @@ async def next_day(ctx):
     # save new infections as set and then iterate over it to change attributes
     new_infections = set()
     i = 0
+    infect_speed = player_game.upgrades[0].level
     for spot in player_map.spot_list:
         if spot.spot_type == 'infected':
-            if randint(0, 3) == 0:
+            if randint(infect_speed, 8) == 8:
                 if player_map.spot_list[i - 1].spot_type == 'land':
                     new_infections.add(player_map.spot_list[i - 1])
             
             try:
-                if randint(0, 3) == 0:
+                if randint(infect_speed, 8) == 8:
                     if player_map.spot_list[i + 1].spot_type == 'land':
                         new_infections.add(player_map.spot_list[i + 1])
                 
@@ -225,12 +271,12 @@ async def next_day(ctx):
                 if player_map.spot_list[index].spot_type == 'land':
                     new_infections.add(player_map.spot_list[index])
 
-            if randint(0, 3) == 0:
+            if randint(infect_speed, 8) == 8:
                 if player_map.spot_list[i - player_map.width].spot_type == 'land':
                     new_infections.add(player_map.spot_list[i - player_map.width])
 
             try:
-                if randint(0, 3) == 0:
+                if randint(infect_speed, 8) == 8:
                     if player_map.spot_list[i + player_map.width].spot_type == 'land':
                         new_infections.add(player_map.spot_list[i + player_map.width])
             
@@ -247,7 +293,7 @@ async def next_day(ctx):
 
     population = player_map.get_population()
 
-    embed_map = discord.Embed(title='Map')\
+    embed_map = discord.Embed(title='Map', color=255)\
     .add_field(name='Population', value=str(population[0]), inline=False)\
     .add_field(name='Infected Population', value=str(population[1]))\
     .add_field(name='New Infections', value=len(new_infections))\
@@ -257,6 +303,73 @@ async def next_day(ctx):
     await ctx.send(file=player_map.map_to_image(), embed=embed_map)
 
     player_game.save(str(ctx.author.id))
+
+@bot.command(name='upgrade', rest_is_raw=True)
+async def upgrade(ctx, *, upgrade_arg):
+    '''
+    Upgrade virus attributes.
+    '''
+
+    player_game = load_game(str(ctx.author.id))
+
+    if (player_game == 0):
+        await ctx.send('No game found! Create a game with p!newgame.')
+        return
+        
+    if upgrade_arg == '':
+        await ctx.send('Enter a valid upgrade after p!upgrade. Ex: p!upgrade Infect Speed.')
+        return
+
+    upgrade_text = upgrade_arg[1:]
+    upgrade_arg = upgrade_arg[1:].lower()
+    
+    upgrade = 0
+    for player_upgrade in player_game.upgrades:
+        if upgrade_arg == player_upgrade.name:
+            upgrade = player_upgrade
+            break
+    
+    if upgrade == 0:
+        await ctx.send(f'{upgrade_text} is not a valid upgrade.')
+        return
+
+    if upgrade.level < upgrade.max_level:
+        points_required = upgrade.level + 1
+
+        if player_game.points >= points_required:
+            upgrade.level += 1
+            player_game.points -= points_required
+        
+        else:
+            await ctx.send(f'You only have {str(player_game.points)} points, you need {str(points_required)} points to upgrade {upgrade_text}.')
+            return
+    
+    else:
+        await ctx.send(f'{upgrade_text} is already at max level - level {str(upgrade.level)}.')
+        return
+
+    await ctx.send(f'{upgrade_text} is now level {str(upgrade.level)}.')
+
+    player_game.save(str(ctx.author.id))
+
+@bot.command(name='upgrades')
+async def upgrades_list(ctx):
+    '''
+    Show list of upgrades and their current level to player.
+    '''
+
+    player_game = load_game(str(ctx.author.id))
+
+    if (player_game == 0):
+        await ctx.send('No game found! Create a game with p!newgame.')
+        return
+
+    embed_upgrades_list = discord.Embed(title='Upgrades', color=16711680)
+    for upgrade in player_game.upgrades:
+        upgrade_message = f'Level {upgrade.level} / {upgrade.max_level}.\n'
+        embed_upgrades_list = embed_upgrades_list.add_field(name=upgrade.name, value = upgrade_message)
+    
+    await ctx.send(embed=embed_upgrades_list)
 
 keep_alive.keep_alive()
 
