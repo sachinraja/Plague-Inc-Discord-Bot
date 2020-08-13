@@ -3,15 +3,13 @@ from discord.ext import commands
 import logging
 import jsonpickle
 from random import randrange, randint
-import keep_alive
+import never_sleep
 from PIL import Image
 from io import BytesIO
-from os import getenv
-from dotenv import load_dotenv
+from os import environ
 
 # load environment variables
-load_dotenv()
-BOT_TOKEN = getenv('TOKEN')
+BOT_TOKEN = environ['TOKEN']
 
 # logging
 logger = logging.getLogger('discord')
@@ -376,6 +374,6 @@ async def upgrades_list(ctx):
     
     await ctx.send(embed=embed_upgrades_list)
 
-keep_alive.keep_alive()
+never_sleep.awake('https://Plague-Inc-Discord-Bot.xcloudzx.repl.co', False)
 
 bot.run(BOT_TOKEN)
