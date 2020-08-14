@@ -21,9 +21,10 @@ def ping(target, debug):
         time.sleep(random.randint(180,300)) #alternate ping time between 3 and 5 minutes
         
 def awake(target, debug=False):  
-    log = logging.getLogger('werkzeug')
-    log.disabled = True
-    app.logger.disabled = True  
+    logger = logging.getLogger('werkzeug')
+    logger.disabled = True
+    app.logger.disabled = True
+    
     t = Thread(target=run)
     r = Thread(target=ping, args=(target,debug,))
     t.start()

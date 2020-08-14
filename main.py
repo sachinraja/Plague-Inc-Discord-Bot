@@ -2,13 +2,16 @@ import discord
 from discord.ext import commands
 import logging
 import jsonpickle
-from random import randrange, randint
+import random
 import never_sleep
 from PIL import Image
 from io import BytesIO
 from os import environ
+from dotenv import load_dotenv
+import math
 
 # load environment variables
+load_dotenv()
 BOT_TOKEN = environ['TOKEN']
 
 # logging
@@ -36,7 +39,7 @@ class Spot():
             self.color = (255, 0, 0)
         
         self.continent = continent
-        self.population = population
+        self.population = population      
 
 class Map():
     
@@ -52,6 +55,7 @@ class Map():
         for y in range(self.height):
           for x in range(self.width):
                 map_image.putpixel((x, y), self.spot_list[i].color)
+
                 i += 1
 
         # upscale image
@@ -103,8 +107,8 @@ class Upgrade():
 
 class Game():
 
-    def __init__(self, map, points, upgrades, cure_percent):
-        self.map = map
+    def __init__(self, game_map, points, upgrades, cure_percent=0):
+        self.map = game_map
         self.points = points
         self.upgrades = upgrades
         self.cure_percent = cure_percent
@@ -121,7 +125,7 @@ def load_game(user_id):
     
     except:
         return 0
-            
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
@@ -137,7 +141,7 @@ async def help_message(ctx):
     .add_field(name="p!map", value = "Shows your current game's map.", inline=False)\
     .add_field(name="p!place [continent]", value = "Begins the spread of the infection by placing an infected tile somewhere in continent.", inline=False)\
     .add_field(name="p!next", value = "Goes to the next day, which spreads the infection and updates the cure percentage.", inline=False)\
-    .add_field(name="p!upgrade [upgrade]", value = "Upgrades upgrade to the next level.", inline=False)\
+    .add_field(name="p!upgrade [upgrade_name]", value = "Upgrades upgrade_name to the next level.", inline=False)\
     .add_field(name="p!upgrades", value = "Shows a list of your current game's upgrades and their levels.", inline=False)
 
     await ctx.send(embed=embed_help_message)
@@ -228,7 +232,7 @@ async def place_infected(ctx, *, continent):
         return
 
     # choose one spot out of the spots on the list
-    random_placement = randrange(0, len(valid_placements))
+    random_placement = random.randrange(0, len(valid_placements))
     valid_placements[random_placement].spot_type = 'infected'
     valid_placements[random_placement].color = (255, 0, 0)
 
@@ -252,18 +256,20 @@ async def next_day(ctx):
 
     # save new infections as set and then iterate over it to change attributes
     new_infections = set()
+
     i = 0
-    infect_chance = player_game.upgrades[0].level + player_game.upgrades[1].level + player_game.upgrades[2].level\
-        + player_game.upgrades[3].level + player_game.upgrades[4].level
+    infect_chance = player_game.upgrades[0].level + player_game.upgrades[1].level + player_game.upgrades[2].level + player_game.upgrades[3].level + player_game.upgrades[4].level
+
+    random_infect_max = 15
 
     for spot in player_map.spot_list:
         if spot.spot_type == 'infected':
-            if randint(infect_chance, 15) == 15:
+            if random.randint(infect_chance, random_infect_max) == random_infect_max:
                 if player_map.spot_list[i - 1].spot_type == 'land':
                     new_infections.add(player_map.spot_list[i - 1])
             
             try:
-                if randint(infect_chance, 15) == 15:
+                if random.randint(infect_chance, random_infect_max) == random_infect_max:
                     if player_map.spot_list[i + 1].spot_type == 'land':
                         new_infections.add(player_map.spot_list[i + 1])
                 
@@ -273,12 +279,12 @@ async def next_day(ctx):
                 if player_map.spot_list[index].spot_type == 'land':
                     new_infections.add(player_map.spot_list[index])
 
-            if randint(infect_chance, 15) == 15:
+            if random.randint(infect_chance, random_infect_max) == random_infect_max:
                 if player_map.spot_list[i - player_map.width].spot_type == 'land':
                     new_infections.add(player_map.spot_list[i - player_map.width])
 
             try:
-                if randint(infect_chance, 15) == 15:
+                if random.randint(infect_chance, random_infect_max) == random_infect_max:
                     if player_map.spot_list[i + player_map.width].spot_type == 'land':
                         new_infections.add(player_map.spot_list[i + player_map.width])
             
@@ -290,6 +296,7 @@ async def next_day(ctx):
         i += 1
 
     for infection in new_infections:
+            player_game.points += 2
             infection.spot_type = 'infected'
             infection.color = (255, 0, 0)
 
@@ -319,7 +326,7 @@ async def upgrade(ctx, *, upgrade_arg):
         return
         
     if upgrade_arg == '':
-        await ctx.send('Enter a valid upgrade after p!upgrade. Ex: p!upgrade Infect Speed.')
+        await ctx.send('Enter a valid upgrade after p!upgrade. Ex: p!upgrade air transmission.')
         return
 
     upgrade_text = upgrade_arg[1:]
@@ -332,7 +339,7 @@ async def upgrade(ctx, *, upgrade_arg):
             break
     
     if upgrade == 0:
-        await ctx.send('Enter a valid upgrade after p!upgrade. Ex: p!upgrade Infect Speed.')
+        await ctx.send('Enter a valid upgrade after p!upgrade. Ex: p!upgrade air transmission.')
         return
 
     if upgrade.level < upgrade.max_level:
